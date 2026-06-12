@@ -3,7 +3,7 @@ import sqlite3
 import numpy as np
 import faiss
 from sentence_transformers import SentenceTransformer
-from collections import defaultdict
+# from collections import defaultdict
 from nltk.tokenize import word_tokenize
 
 class Chunker:
@@ -48,20 +48,20 @@ class Chunker:
             length INTEGER
         )
         """)
+        # # Removed For Direct BM25 implementation
+        # c.execute("""
+        # CREATE TABLE IF NOT EXISTS bm25_df (
+        #     term TEXT PRIMARY KEY,
+        #     df INTEGER
+        # )
+        # """)
 
-        c.execute("""
-        CREATE TABLE IF NOT EXISTS bm25_df (
-            term TEXT PRIMARY KEY,
-            df INTEGER
-        )
-        """)
-
-        c.execute("""
-        CREATE TABLE IF NOT EXISTS bm25_meta (
-            key TEXT PRIMARY KEY,
-            value TEXT
-        )
-        """)
+        # c.execute("""
+        # CREATE TABLE IF NOT EXISTS bm25_meta (
+        #     key TEXT PRIMARY KEY,
+        #     value TEXT
+        # )
+        # """)
 
         self.bm25_conn.commit()
 
@@ -115,17 +115,17 @@ class Chunker:
         '''
             Generates DF (Document Frequency for a Token) and List of all Tokens For That Chunk
         '''
-        df = defaultdict(int)
+        # df = defaultdict(int)
         doc_tokens = {}
 
         for chunk_id, chunk in zip(chunk_ids, chunks):
             tokens = self.make_tokens(chunk)
             doc_tokens[chunk_id] = tokens
 
-            for token in set(tokens):
-                df[token] += 1
+            # for token in set(tokens):
+            #     df[token] += 1
 
-        return doc_tokens, df
+        return doc_tokens
       
     def save(self, chunks):
         '''
@@ -148,7 +148,7 @@ class Chunker:
         print("Saved Metadata")
             
         #   BM25   #
-        doc_tokens, df = self.build_bm25(chunks, ids)
+        doc_tokens = self.build_bm25(chunks, ids)
         bm25_cursor = self.bm25_conn.cursor()
         for chunk_id, tokens in doc_tokens.items():
             bm25_cursor.execute("""
@@ -156,14 +156,15 @@ class Chunker:
             """, (chunk_id, " ".join(tokens), len(tokens)))
         
         # store DF
-        for term, freq in df.items():
-            bm25_cursor.execute("""
-                INSERT OR REPLACE INTO bm25_df VALUES (?, ?)
-            """, (term, freq))
+        # for term, freq in df.items():
+        #     bm25_cursor.execute("""
+        #         INSERT OR REPLACE INTO bm25_df VALUES (?, ?)
+        #     """, (term, freq))
 
-        bm25_cursor.execute("""
-            INSERT OR REPLACE INTO bm25_meta VALUES (?, ?)
-        """, ("N", str(len(chunks))))
+        # bm25_cursor.execute("""
+        #     INSERT OR REPLACE INTO bm25_meta VALUES (?, ?)
+        # """, ("N", str(len(chunks))))
+        
         self.bm25_conn.commit()
         print("Saved BM25 Index")
         
@@ -180,8 +181,8 @@ class Chunker:
         chunks = self.get_chunks_from_text(text)
         self.save(chunks)
 
-# if __name__ == "__main__":
-#     text = """The Reserve Bank of India (RBI) announced a new liquidity framework today. Analysts say the move could improve credit availability for small businesses. However, several economists warned that the long-term effects remain uncertain. What impact will this have on inflation over the next 12 months?\n\nMarkets reacted positively to the announcement. The NIFTY 50 gained 1.2%, while the SENSEX climbed nearly 800 points during afternoon trading. Traders described the rally as "unexpectedly strong" given recent volatility. Some investors remained cautious, citing concerns about global growth.\nMeanwhile, technology companies continued to invest heavily in artificial intelligence. Microsoft reported increased spending on data-center infrastructure, while Google expanded its AI research initiatives. These investments are expected to exceed $50 billion by 2027. Could this trigger a new wave of competition across the industry?\nThe report also highlighted cybersecurity concerns. Attackers frequently exploit misconfigured cloud services, weak authentication mechanisms, and outdated software packages. Security teams are encouraged to perform regular audits, monitor unusual activity, and apply patches promptly. Failure to do so may expose sensitive customer information.\nConsumer sentiment improved slightly in June despite persistent inflationary pressures. Survey respondents expressed optimism about wage growth but remained concerned about housing costs. Economists noted that household spending patterns have shifted considerably since 2024. Further data will be released next quarter."""
+if __name__ == "__main__":
+    text = """The Reserve Bank of India (RBI) announced a new liquidity framework today. Analysts say the move could improve credit availability for small businesses. However, several economists warned that the long-term effects remain uncertain. What impact will this have on inflation over the next 12 months?\n\nMarkets reacted positively to the announcement. The NIFTY 50 gained 1.2%, while the SENSEX climbed nearly 800 points during afternoon trading. Traders described the rally as "unexpectedly strong" given recent volatility. Some investors remained cautious, citing concerns about global growth.\nMeanwhile, technology companies continued to invest heavily in artificial intelligence. Microsoft reported increased spending on data-center infrastructure, while Google expanded its AI research initiatives. These investments are expected to exceed $50 billion by 2027. Could this trigger a new wave of competition across the industry?\nThe report also highlighted cybersecurity concerns. Attackers frequently exploit misconfigured cloud services, weak authentication mechanisms, and outdated software packages. Security teams are encouraged to perform regular audits, monitor unusual activity, and apply patches promptly. Failure to do so may expose sensitive customer information.\nConsumer sentiment improved slightly in June despite persistent inflationary pressures. Survey respondents expressed optimism about wage growth but remained concerned about housing costs. Economists noted that household spending patterns have shifted considerably since 2024. Further data will be released next quarter."""
     
-#     chunker = Chunker()
-#     chunker.run(text)
+    chunker = Chunker()
+    chunker.run(text)
