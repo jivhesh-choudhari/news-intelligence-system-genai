@@ -5,6 +5,8 @@ import faiss
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 from nltk.tokenize import word_tokenize
+from nltk.corpus import stopwords
+from string import punctuation
 
 class Chunker:
     def __init__(
@@ -93,6 +95,9 @@ class Chunker:
             Reduces Sentence Chunks to individual Tokens for creating index
         ''' 
         text = text.lower()
+        stop_words = set(stopwords.words('english'))
+        text = ''.join([char for char in text if char not in punctuation])
+        text = ' '.join([word for word in text.split() if word not in stop_words])
         tokens = word_tokenize(text)
         tokens = [t for t in tokens if t.isalnum()]
         return tokens
@@ -101,7 +106,7 @@ class Chunker:
         '''
             Generates Embeddings 
         '''
-        embeddings = self.model.encode(chunks)
+        embeddings = self.model.encode(chunks, normalize_embeddings=True)
         embeddings = np.array(embeddings).astype("float32")
         dimension = embeddings.shape[1]
         return embeddings, dimension
