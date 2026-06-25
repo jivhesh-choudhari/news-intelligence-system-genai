@@ -3,7 +3,7 @@ import sqlite3
 import numpy as np
 import faiss
 from sentence_transformers import SentenceTransformer
-# from collections import defaultdict
+from sklearn.metrics.pairwise import cosine_similarity
 from nltk.tokenize import word_tokenize
 
 class Chunker:
@@ -11,6 +11,7 @@ class Chunker:
         self,
         model_name='all-MiniLM-L6-v2',
         chunk_threshold=300,
+        similarity_threshold=0.15,
         index_path="faiss.index",
         metadata_path="metadata.db",
         bm25_path="bm25.db"
@@ -18,7 +19,7 @@ class Chunker:
         self.model = SentenceTransformer(model_name)
         self.chunk_threshold = chunk_threshold
         self.faiss_path = index_path
-
+        self.similarity_threshold = similarity_threshold 
         # SQLite for chunks
         self.conn = sqlite3.connect(metadata_path)
         self.create_metadata_table()
@@ -48,20 +49,6 @@ class Chunker:
             length INTEGER
         )
         """)
-        # # Removed For Direct BM25 implementation
-        # c.execute("""
-        # CREATE TABLE IF NOT EXISTS bm25_df (
-        #     term TEXT PRIMARY KEY,
-        #     df INTEGER
-        # )
-        # """)
-
-        # c.execute("""
-        # CREATE TABLE IF NOT EXISTS bm25_meta (
-        #     key TEXT PRIMARY KEY,
-        #     value TEXT
-        # )
-        # """)
 
         self.bm25_conn.commit()
 
@@ -79,14 +66,23 @@ class Chunker:
         paragraphs = re.split(r'\n+', text.strip()) #Splitting the text into paragraphs based on \n or \n\n
         chunks = []
         for paragraph in paragraphs: # Prevents Cross-Paragraph Sentence Merging/Splitting
-            sentences = self.get_sentences_from_paragraph(paragraph)
-            current_chunk = ""
-            for sentence in sentences:
-                if len(current_chunk) + len(sentence) + 1 <= self.chunk_threshold:
+            sentences = self.get_sentences_from_paragraph(paragraph) 
+            embeddings = self.model.encode(sentences) 
+            current_chunk = sentences[0]
+            curr_chunk_embedding = embeddings[0]
+            for i in range(1, len(sentences)):
+                sentence = sentences[i]
+                # Find Similarity between the current chunk and the next sentence
+                sim = cosine_similarity(embeddings[i].reshape(1, -1), curr_chunk_embedding.reshape(1, -1)).item()
+                # Merging Chunks based on the threshold and similarity
+                if len(current_chunk) + len(sentence) + 1 <= self.chunk_threshold and sim > self.similarity_threshold:
                     current_chunk += " " + sentence
+                    # Update Chunk Embedding by taking the mean 
+                    curr_chunk_embedding = np.mean([curr_chunk_embedding, embeddings[i]], axis=0)
                 else:
                     chunks.append(current_chunk.strip())
                     current_chunk = sentence
+                    curr_chunk_embedding = embeddings[i]
             if current_chunk:
                 chunks.append(current_chunk.strip())
         print(f"Produced {len(chunks)} Chunks for {len(paragraphs)} Paragraphs")
@@ -115,15 +111,11 @@ class Chunker:
         '''
             Generates DF (Document Frequency for a Token) and List of all Tokens For That Chunk
         '''
-        # df = defaultdict(int)
         doc_tokens = {}
 
         for chunk_id, chunk in zip(chunk_ids, chunks):
             tokens = self.make_tokens(chunk)
             doc_tokens[chunk_id] = tokens
-
-            # for token in set(tokens):
-            #     df[token] += 1
 
         return doc_tokens
       
@@ -142,9 +134,9 @@ class Chunker:
         self.conn.commit()
         last_id = self.cursor.lastrowid 
         if not last_id:
-            ids = np.arange(1, len(chunks) + 1)
+            ids = list(range(1, len(chunks) + 1))
         else:
-            ids = np.arange(abs(last_id - len(chunks)) + 1, last_id + 1)
+            ids = list(range(abs(last_id - len(chunks)) + 1, last_id + 1))
         print("Saved Metadata")
             
         #   BM25   #
@@ -153,27 +145,15 @@ class Chunker:
         for chunk_id, tokens in doc_tokens.items():
             bm25_cursor.execute("""
                 INSERT INTO bm25_docs VALUES (?, ?, ?)
-            """, (chunk_id, " ".join(tokens), len(tokens)))
-        
-        # store DF
-        # for term, freq in df.items():
-        #     bm25_cursor.execute("""
-        #         INSERT OR REPLACE INTO bm25_df VALUES (?, ?)
-        #     """, (term, freq))
-
-        # bm25_cursor.execute("""
-        #     INSERT OR REPLACE INTO bm25_meta VALUES (?, ?)
-        # """, ("N", str(len(chunks))))
-        
+            """, (chunk_id, " ".join(tokens), len(tokens)))    
         self.bm25_conn.commit()
         print("Saved BM25 Index")
-        
         
         #    Embeddings    #
         embeddings, dimension = self.make_embeddings(chunks)
         base_index = faiss.IndexFlatL2(dimension)
         self.index = faiss.IndexIDMap(base_index)
-        self.index.add_with_ids(embeddings, ids)
+        self.index.add_with_ids(embeddings, np.array(ids, dtype=np.int64))
         faiss.write_index(self.index, self.faiss_path)
         print("Saved Embeddings")
         
@@ -182,7 +162,7 @@ class Chunker:
         self.save(chunks)
 
 if __name__ == "__main__":
-    text = """The Reserve Bank of India (RBI) announced a new liquidity framework today. Analysts say the move could improve credit availability for small businesses. However, several economists warned that the long-term effects remain uncertain. What impact will this have on inflation over the next 12 months?\n\nMarkets reacted positively to the announcement. The NIFTY 50 gained 1.2%, while the SENSEX climbed nearly 800 points during afternoon trading. Traders described the rally as "unexpectedly strong" given recent volatility. Some investors remained cautious, citing concerns about global growth.\nMeanwhile, technology companies continued to invest heavily in artificial intelligence. Microsoft reported increased spending on data-center infrastructure, while Google expanded its AI research initiatives. These investments are expected to exceed $50 billion by 2027. Could this trigger a new wave of competition across the industry?\nThe report also highlighted cybersecurity concerns. Attackers frequently exploit misconfigured cloud services, weak authentication mechanisms, and outdated software packages. Security teams are encouraged to perform regular audits, monitor unusual activity, and apply patches promptly. Failure to do so may expose sensitive customer information.\nConsumer sentiment improved slightly in June despite persistent inflationary pressures. Survey respondents expressed optimism about wage growth but remained concerned about housing costs. Economists noted that household spending patterns have shifted considerably since 2024. Further data will be released next quarter."""
+    text = 'Artificial intelligence is changing how people interact with technology every day. From recommendation systems to virtual assistants, machine learning models are becoming increasingly common! Researchers continue to explore new architectures that improve efficiency and accuracy. Meanwhile, penguins in Antarctica spend months adapting to extreme weather conditions.\n\n\n\nThe old lighthouse stood on the edge of the cliff, overlooking the restless sea. Waves crashed against the rocks below, sending sprays of water into the air! Despite decades of storms, the structure remained remarkably resilient. How many sailors had relied on its guiding light over the years?\n\nA small café opened near the train station last month. Customers quickly became fond of its freshly baked pastries and aromatic coffee! Some visitors came to work quietly on their laptops, while others gathered with friends. What makes a place feel welcoming and memorable?\n\n\nDeep within the rainforest, countless species coexist in a delicate balance. Brightly colored birds dart between the trees while insects hum in the background! Environmental scientists monitor these ecosystems to better understand biodiversity. Can conservation efforts keep pace with the challenges posed by climate change?' 
     
     chunker = Chunker()
     chunker.run(text)
