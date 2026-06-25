@@ -11,7 +11,7 @@ class Chunker:
         self,
         model_name='all-MiniLM-L6-v2',
         chunk_threshold=300,
-        similarity_threshold=0.15,
+        similarity_threshold=0.45,
         index_path="faiss.index",
         metadata_path="metadata.db",
         bm25_path="bm25.db"
@@ -92,7 +92,6 @@ class Chunker:
         '''
             Reduces Sentence Chunks to individual Tokens for creating index
         ''' 
-        tokens = set()
         text = text.lower()
         tokens = word_tokenize(text)
         tokens = [t for t in tokens if t.isalnum()]
