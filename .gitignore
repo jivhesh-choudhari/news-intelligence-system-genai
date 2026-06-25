@@ -2,6 +2,9 @@
 # MADE BY GITHUB #
 ##################
 
+# database files
+*.db
+
 # Personal Files
 premise.txt
 
