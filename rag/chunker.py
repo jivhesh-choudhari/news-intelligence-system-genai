@@ -24,11 +24,11 @@ class Chunker:
         self.faiss_path = index_path
         self.similarity_threshold = similarity_threshold 
         # SQLite for chunks
-        self.conn = sqlite3.connect(metadata_path)
+        self.conn = sqlite3.connect(metadata_path, check_same_thread=False)
         self.create_metadata_table()
 
         # BM25 storage
-        self.bm25_conn = sqlite3.connect(bm25_path)
+        self.bm25_conn = sqlite3.connect(bm25_path, check_same_thread=False)
         self.create_bm25_tables()
         self.index = None
         

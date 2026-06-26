@@ -19,8 +19,8 @@ class HybridRetriever:
     def __init__(self, index_path, bm25_path, metadata_path, embedding_model: SentenceTransformer = None, model_name='all-MiniLM-L6-v2', verbose=False):
         self.index = faiss.read_index(index_path)
         self.model = embedding_model or sentence_transformers.SentenceTransformer(model_name)
-        self.meta_conn = sqlite3.connect(metadata_path)
-        self.bm25_conn = sqlite3.connect(bm25_path)
+        self.meta_conn = sqlite3.connect(metadata_path, check_same_thread=False)
+        self.bm25_conn = sqlite3.connect(bm25_path, check_same_thread=False)
         self.bm25_cursor = self.bm25_conn.cursor()
         self.verbose = verbose
         self.meta_cursor = self.meta_conn.cursor()

@@ -1,10 +1,10 @@
 
-import sqlite3, random, uuid, time, threading
+import sqlite3, random, uuid, time, threading, atexit
 from datetime import datetime, timedelta
 
 class ReadingSessionSimulator:
     def __init__(self, db_path="session.db"):
-        self.conn=sqlite3.connect(db_path)
+        self.conn=sqlite3.connect(db_path, check_same_thread=False)
         c=self.conn.cursor()
         c.execute("""CREATE TABLE IF NOT EXISTS reading_sessions(
             event_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -114,6 +114,7 @@ def start_background_streaming(mode: str = "sessions", db_path: str = "session.d
           'events'   streams a single continuous session
     """
     sim = ReadingSessionSimulator(db_path)
+    atexit.register(sim.conn.close)
 
     def run():
         if mode == "events":

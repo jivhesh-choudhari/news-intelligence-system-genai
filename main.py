@@ -1,4 +1,5 @@
 import os
+import atexit
 import nltk
 from sentence_transformers import SentenceTransformer
 
@@ -32,27 +33,27 @@ def main():
     evaluator = RAGEvaluator(embedding_model=embedding_model)
     print("Ready.\n")
 
-    while True:
-        try:
+    try:
+        while True:
             question = input("prompt: ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print("\nExiting.")
-            break
+            if not question:
+                continue
+            if question.lower() == "exit":
+                break
 
-        if not question:
-            continue
-        if question.lower() == "exit":
-            break
+            result = generator.generate(question)
+            print(f"\nAnswer: {result['answer']}")
+            print(f"Confidence: {result['top_score']:.3f}")
 
-        result = generator.generate(question)
-        print(f"\nAnswer: {result['answer']}")
-        print(f"Confidence: {result['top_score']:.3f}")
+            scores = evaluator.evaluate(question, result["answer"], result["chunks"])
+            if scores["faithfulness"] is not None:
+                print(f"Faithfulness: {scores['faithfulness']:.2f}  Relevance: {scores['relevance']:.2f}")
 
-        scores = evaluator.evaluate(question, result["answer"], result["chunks"])
-        if scores["faithfulness"] is not None:
-            print(f"Faithfulness: {scores['faithfulness']:.2f}  Relevance: {scores['relevance']:.2f}")
-
-        print()
+            print()
+    except (EOFError, KeyboardInterrupt):
+        pass
+    finally:
+        print("\nShutting down...")
 
 
 if __name__ == "__main__":

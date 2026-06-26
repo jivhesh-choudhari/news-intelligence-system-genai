@@ -2,6 +2,7 @@ import requests
 import threading
 import time
 import os
+import atexit
 from dotenv import load_dotenv, find_dotenv
 
 try:
@@ -55,6 +56,9 @@ def start_background_polling(interval: int = 600):
             time.sleep(interval)
 
     fetcher = NewsFetcher()
+    atexit.register(storage.conn.close)
+    atexit.register(chunker.conn.close)
+    atexit.register(chunker.bm25_conn.close)
     thread = threading.Thread(target=poll_loop, daemon=True)
     thread.start()
     return thread
