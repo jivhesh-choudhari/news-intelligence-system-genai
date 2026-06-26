@@ -18,8 +18,9 @@ class ArticleStorage:
         """)
         self.conn.commit()
 
-    def save(self, articles: list):
+    def save(self, articles: list) -> list[str]:
         c = self.conn.cursor()
+        new_contents = []
         for article in articles:
             if not article.get("title") or not article.get("content"):
                 continue
@@ -34,4 +35,7 @@ class ArticleStorage:
                     datetime.now().isoformat(),
                 ),
             )
+            if c.rowcount == 1:
+                new_contents.append(article["content"])
         self.conn.commit()
+        return new_contents

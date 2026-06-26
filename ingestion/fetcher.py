@@ -25,19 +25,36 @@ class NewsFetcher:
 
 
 def start_background_polling(interval: int = 600):
+    import sys
+    _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    _rag_dir = os.path.join(_root, "rag")
+    if _rag_dir not in sys.path:
+        sys.path.insert(0, _rag_dir)
+    from chunker import Chunker
+
     storage = ArticleStorage()
-    fetcher = NewsFetcher()
+    chunker = Chunker(
+        index_path=os.path.join(_rag_dir, "faiss.index"),
+        metadata_path=os.path.join(_rag_dir, "metadata.db"),
+        bm25_path=os.path.join(_rag_dir, "bm25.db"),
+    )
 
     def poll_loop():
         while True:
             try:
                 articles = fetcher.fetch()
-                storage.save(articles)
-                print(f"[fetcher] Stored {len(articles)} articles")
+                new_contents = storage.save(articles)
+                print(f"[fetcher] Stored {len(new_contents)} new articles")
+                for content in new_contents:
+                    try:
+                        chunker.run(content)
+                    except Exception as e:
+                        print(f"[chunker] Error indexing article: {e}")
             except Exception as e:
                 print(f"[fetcher] Error: {e}")
             time.sleep(interval)
 
+    fetcher = NewsFetcher()
     thread = threading.Thread(target=poll_loop, daemon=True)
     thread.start()
     return thread

@@ -1,4 +1,5 @@
 import re
+import os
 import sqlite3
 import numpy as np
 import faiss
@@ -155,8 +156,11 @@ class Chunker:
         
         #    Embeddings    #
         embeddings, dimension = self.make_embeddings(chunks)
-        base_index = faiss.IndexFlatL2(dimension)
-        self.index = faiss.IndexIDMap(base_index)
+        if os.path.exists(self.faiss_path):
+            self.index = faiss.read_index(self.faiss_path)
+        else:
+            base_index = faiss.IndexFlatL2(dimension)
+            self.index = faiss.IndexIDMap(base_index)
         self.index.add_with_ids(embeddings, np.array(ids, dtype=np.int64))
         faiss.write_index(self.index, self.faiss_path)
         print("Saved Embeddings")
