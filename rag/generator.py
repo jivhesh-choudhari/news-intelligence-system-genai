@@ -1,7 +1,8 @@
 from huggingface_hub import InferenceClient
 from dotenv import load_dotenv, find_dotenv
-from retrieval import HybridRetriever
-from guardrails import Guardrails
+from .retrieval import HybridRetriever
+from .guardrails import Guardrails
+from sentence_transformers import SentenceTransformer
 import os
 
 
@@ -18,13 +19,14 @@ class Generator:
         index_path="faiss.index",
         bm25_path="bm25.db",
         metadata_path="metadata.db",
+        embedding_model: SentenceTransformer = None,
         model="Qwen/Qwen2.5-7B-Instruct"
     ):
         token = os.getenv("HF_TOKEN")
         if not token:
             raise EnvironmentError("HF_TOKEN not set. Add HF_TOKEN=<your_token> to your .env file.")
 
-        self.retriever = HybridRetriever(index_path, bm25_path, metadata_path)
+        self.retriever = HybridRetriever(index_path, bm25_path, metadata_path, embedding_model=embedding_model)
         self.client = InferenceClient(model=model, token=token)
         self.guardrails = Guardrails()
 

@@ -9,15 +9,16 @@ except ImportError:
     from fusion import fusion
 import numpy as np
 import sentence_transformers
+from sentence_transformers import SentenceTransformer
 import faiss
 import sqlite3
 
 #source of metadata metadata.db
 #source of index faiss.index
 class HybridRetriever:
-    def __init__(self, index_path, bm25_path, metadata_path, model_name='all-MiniLM-L6-v2', verbose=False):
+    def __init__(self, index_path, bm25_path, metadata_path, embedding_model: SentenceTransformer = None, model_name='all-MiniLM-L6-v2', verbose=False):
         self.index = faiss.read_index(index_path)
-        self.model = sentence_transformers.SentenceTransformer(model_name)
+        self.model = embedding_model or sentence_transformers.SentenceTransformer(model_name)
         self.meta_conn = sqlite3.connect(metadata_path)
         self.bm25_conn = sqlite3.connect(bm25_path)
         self.bm25_cursor = self.bm25_conn.cursor()
