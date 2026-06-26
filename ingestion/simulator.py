@@ -1,93 +1,126 @@
-# Each article fetch is treated as a reading session. Simulate realistic reading sessions synthetically — generate both human-like and bot-like sessions programmatically
 
-import random
-import uuid
-import sqlite3
+import sqlite3, random, uuid, time, threading
 from datetime import datetime, timedelta
 
 class ReadingSessionSimulator:
-    def __init__(self, db_path):
-        try:
-            self.conn = sqlite3.connect(db_path)
-        except sqlite3.Error as e:
-            print(f"Error connecting to database: {e}")
-            return
-        c = self.conn.cursor()
-        c.execute('''
-                    CREATE TABLE IF NOT EXISTS reading_sessions (
-                        event_id TEXT PRIMARY KEY,
-                        session_id TEXT NOT NULL,
-                        article_id TEXT,
-                        event_name TEXT,
-                        timestamp TEXT
-                    );
-                ''')
+    def __init__(self, db_path="session.db"):
+        self.conn=sqlite3.connect(db_path)
+        c=self.conn.cursor()
+        c.execute("""CREATE TABLE IF NOT EXISTS reading_sessions(
+            event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT,
+            session_type TEXT,
+            article_id TEXT,
+            event_name TEXT,
+            timestamp TEXT
+        )""")
         self.conn.commit()
-        
-    def simulate_session(self, type: str = "human"):
-        session_id = uuid.uuid4().hex
 
-        # weights
-        if type == "bot":
-            w = [
-                10,     # no of articles
-                1,      # avg events per article
-                0.01,   # min time interval multiplier
-            ]
-            event_weights = [1, 1, 8]  # page_view, scroll, click
+    def _emit_event(self,sid,stype,article,event,ts):
+        self.conn.execute("INSERT INTO reading_sessions(session_id,session_type,article_id,event_name,timestamp) VALUES(?,?,?,?,?)",
+                          (sid,stype,article,event,ts.isoformat()))
+        self.conn.commit()
+
+    def _next_human(self,last):
+        r=random.random()
+        if last=="page_view":
+            return "scroll" if r<0.8 else "click"
+        if last=="scroll":
+            return "scroll" if r<0.6 else ("click" if r<0.85 else "page_view")
+        return "page_view"
+
+    def _next_bot(self,last):
+        r=random.random()
+        if last=="page_view":
+            return "click" if r<0.7 else "page_view"
+        if last=="click":
+            return "page_view"
+        return "click"
+
+    def simulate_human_session(self):
+        sid=uuid.uuid4().hex
+        ts=datetime.now()
+        event="page_view"
+        for _ in range(random.randint(15,40)):
+            art=f"article_{random.randint(1,100)}"
+            self._emit_event(sid,"human",art,event,ts)
+            gap=random.uniform(3,18)
+            ts+=timedelta(seconds=gap)
+            event=self._next_human(event)
+        return sid
+
+    def simulate_bot_session(self):
+        sid=uuid.uuid4().hex
+        ts=datetime.now()
+        event="page_view"
+        for _ in range(random.randint(40,120)):
+            art=f"article_{random.randint(1,100)}"
+            self._emit_event(sid,"bot",art,event,ts)
+            gap=random.uniform(0.05,0.5)
+            ts+=timedelta(seconds=gap)
+            event=self._next_bot(event)
+        return sid
+
+    def stream_events(self,kind=None):
+        kind=kind or random.choice(["human","bot"])
+        sid=uuid.uuid4().hex
+        ts=datetime.now()
+        event="page_view"
+        while True:
+            art=f"article_{random.randint(1,100)}"
+            self._emit_event(sid,kind,art,event,ts)
+            if kind=="human":
+                sleep=random.uniform(2,8)
+                event=self._next_human(event)
+                ts+=timedelta(seconds=sleep)
+            else:
+                sleep=random.uniform(0.05,0.4)
+                event=self._next_bot(event)
+                ts+=timedelta(seconds=sleep)
+            time.sleep(sleep)
+
+    def stream_sessions(self,max_active=3):
+        active=[]
+        while True:
+            while len(active)<max_active:
+                stype="bot" if not any(s["type"]=="bot" for s in active) else random.choices(["human","bot"],weights=[3,1])[0]
+                active.append({"id":uuid.uuid4().hex,"type":stype,"event":"page_view","ts":datetime.now(),"remaining":random.randint(20,60) if stype=="human" else random.randint(50,120)})
+            s=random.choice(active)
+            art=f"article_{random.randint(1,100)}"
+            self._emit_event(s["id"],s["type"],art,s["event"],s["ts"])
+            if s["type"]=="human":
+                sleep=random.uniform(2,7)
+                s["event"]=self._next_human(s["event"])
+            else:
+                sleep=random.uniform(0.05,0.3)
+                s["event"]=self._next_bot(s["event"])
+            s["ts"]+=timedelta(seconds=sleep)
+            s["remaining"]-=1
+            if s["remaining"]<=0:
+                active.remove(s)
+            time.sleep(random.uniform(0.2,1.0))
+
+# if __name__=="__main__":
+#     sim=ReadingSessionSimulator("session.db")
+#     # sim.simulate_human_session()
+#     # sim.simulate_bot_session()
+#     # sim.stream_events("human")
+#     sim.stream_sessions()
+
+
+def start_background_streaming(mode: str = "sessions", db_path: str = "session.db"):
+    """
+    mode: 'sessions' streams interleaved multi-session data (default)
+          'events'   streams a single continuous session
+    """
+    sim = ReadingSessionSimulator(db_path)
+
+    def run():
+        if mode == "events":
+            sim.stream_events()
         else:
-            w = [
-                2,      # no of articles
-                3,      # avg events per article
-                2.0,    # min time interval multiplier
-            ]
-            event_weights = [1, 5, 2]
+            sim.stream_sessions()
 
-        # weighted attributes
-        no_articles = random.randint(1, 3) * w[0]
-        avg_event_per_article = random.randint(1, 3) * w[1]
-        min_time_interval = random.randint(10, 30) * w[2]
-
-        start_time = datetime.now()
-        recent_event_time = start_time
-        c = self.conn.cursor()
-        c.execute(
-            "SELECT article_id FROM articles ORDER BY RANDOM() LIMIT ?",
-            (int(no_articles),)
-        )
-        article_ids = c.fetchall()
-
-        for article_id_tuple in article_ids:
-            article_id = article_id_tuple[0]
-            events_for_article = max(
-                1,
-                int(random.uniform(avg_event_per_article * 0.5, avg_event_per_article * 1.0))
-            )
-            for _ in range(events_for_article):
-                event_id = uuid.uuid4().hex
-                event_name = random.choices(
-                    ['page_view', 'scroll', 'click'],
-                    weights=event_weights,
-                    k=1
-                )[0]
-                interval = random.uniform(min_time_interval, min_time_interval * 3)
-                recent_event_time += timedelta(seconds=interval)
-                c.execute(
-                    """
-                    INSERT INTO reading_sessions (event_id, session_id, article_id, event_name, timestamp) VALUES (?, ?, ?, ?, ?)
-                    """,
-                    (
-                        event_id,
-                        session_id,
-                        article_id,
-                        event_name,
-                        recent_event_time.isoformat()
-                    )
-                )
-
-        self.conn.commit()
-            
-# if __name__ == "__main__":
-#     simulator = ReadingSessionSimulator('news.db')
-#     simulator.simulate_session(type="human")
-#     simulator.simulate_session(type="bot")
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    return thread
